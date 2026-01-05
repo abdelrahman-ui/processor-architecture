@@ -1,0 +1,606 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>General Processor Architecture — Step-by-step Scenario (Fetch/Decode/Execute)</title>
+  <style>
+    :root{
+      --bg:#0b1220; --panel:#0f1a2e; --card:#111f3a; --text:#e8eefc; --muted:#a9b6d6;
+      --accent:#7aa7ff; --accent2:#7ff0c1; --warn:#ffd27a; --bad:#ff7a7a; --ok:#7ff0c1;
+      --line:#24365f;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+      background: radial-gradient(1200px 700px at 20% 10%, #14254a 0%, var(--bg) 55%);
+      color:var(--text);
+    }
+    header{
+      padding:22px 18px 10px; max-width:1200px; margin:0 auto;
+    }
+    h1{margin:0 0 6px; font-size:20px; font-weight:800}
+    p.sub{margin:0; color:var(--muted); line-height:1.4}
+    main{
+      max-width:1200px; margin:0 auto; padding:14px 18px 30px;
+      display:grid; grid-template-columns: 1.2fr 0.8fr; gap:14px;
+    }
+    .panel{
+      background: rgba(15,26,46,0.85);
+      border:1px solid rgba(122,167,255,0.16);
+      box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+      border-radius:14px;
+      overflow:hidden;
+    }
+    .panel .hd{
+      padding:12px 14px; border-bottom:1px solid rgba(36,54,95,0.75);
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+      background: linear-gradient(180deg, rgba(17,31,58,0.8), rgba(15,26,46,0.1));
+    }
+    .panel .hd .title{font-weight:800}
+    .panel .bd{padding:14px}
+    .grid2{display:grid; grid-template-columns:1fr 1fr; gap:10px}
+    .card{
+      background: rgba(17,31,58,0.8);
+      border:1px solid rgba(36,54,95,0.8);
+      border-radius:12px; padding:12px;
+    }
+    .card h3{margin:0 0 6px; font-size:14px}
+    .card p{margin:0; color:var(--muted); font-size:12.5px; line-height:1.45}
+    .controls{
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center; justify-content:flex-end;
+    }
+    button{
+      background: rgba(122,167,255,0.16);
+      border:1px solid rgba(122,167,255,0.35);
+      color:var(--text);
+      padding:9px 11px; border-radius:10px;
+      font-weight:700; cursor:pointer;
+    }
+    button:hover{background: rgba(122,167,255,0.22)}
+    button.secondary{background: rgba(169,182,214,0.10); border-color: rgba(169,182,214,0.22)}
+    button.danger{background: rgba(255,122,122,0.12); border-color: rgba(255,122,122,0.3)}
+    .pill{
+      font-size:12px; padding:6px 10px; border-radius:999px;
+      border:1px solid rgba(169,182,214,0.25); color:var(--muted);
+      background: rgba(17,31,58,0.55);
+    }
+    .row{display:flex; gap:10px; flex-wrap:wrap}
+    .kv{display:flex; gap:10px; flex-wrap:wrap}
+    .kv .k{
+      min-width:160px;
+      padding:9px 10px; border-radius:10px;
+      background: rgba(17,31,58,0.65);
+      border:1px solid rgba(36,54,95,0.8);
+      display:flex; justify-content:space-between; gap:10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size:12.5px;
+    }
+    .kv .k span.lbl{color:var(--muted)}
+    .kv .k span.val{font-weight:800; color:var(--text)}
+    .log{
+      height:320px; overflow:auto; border-radius:12px;
+      border:1px solid rgba(36,54,95,0.8);
+      background: rgba(10,18,32,0.55);
+      padding:10px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      font-size:12.5px; line-height:1.45; color:#dbe6ff;
+      white-space:pre-wrap;
+    }
+    .muted{color:var(--muted)}
+    .small{font-size:12px}
+    .sep{height:10px}
+    .legend{
+      display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+      color:var(--muted); font-size:12px;
+    }
+    .dot{width:10px;height:10px;border-radius:50%;}
+    .dot.a{background:var(--accent)}
+    .dot.b{background:var(--accent2)}
+    .dot.w{background:var(--warn)}
+    .dot.r{background:var(--bad)}
+    /* SVG highlighting */
+    .hi { filter: drop-shadow(0 0 10px rgba(122,167,255,0.75)); }
+    .box { transition: all 180ms ease; }
+    .box.active { stroke: rgba(127,240,193,0.95) !important; stroke-width: 3.5 !important; }
+    .box.active2 { stroke: rgba(255,210,122,0.95) !important; stroke-width: 3.5 !important; }
+    .hint{
+      margin-top:8px; color:var(--muted); font-size:12px; line-height:1.4;
+    }
+    @media (max-width: 980px){
+      main{grid-template-columns:1fr}
+      .log{height:260px}
+    }
+  </style>
+</head>
+
+<body>
+<header>
+  <h1>General Processor Architecture — Simple Scenario (with Drawing + Step-by-step)</h1>
+  <p class="sub">
+    A lightweight educational demo for LinkedIn: Control Unit + Fetching Circuit + Instruction Decoder,
+    Register Bank (PC, IR, ACC, PSW, GPR R0..R3), ALU (Op1/Op2), and Cache/Memory. Use <b>Next Step</b> to simulate what happens inside a CPU.
+  </p>
+</header>
+
+<main>
+  <!-- LEFT: Drawing + Definitions -->
+  <section class="panel">
+    <div class="hd">
+      <div class="title">Architecture Drawing</div>
+      <div class="legend">
+        <span class="row"><span class="dot a"></span> Active block</span>
+        <span class="row"><span class="dot b"></span> Data/Writeback</span>
+        <span class="row"><span class="dot w"></span> Cache / Memory</span>
+        <span class="row"><span class="dot r"></span> Flag/Status change</span>
+      </div>
+    </div>
+    <div class="bd">
+      <!-- SVG diagram (this is the "image" inside the HTML) -->
+      <svg id="archSvg" viewBox="0 0 1100 520" width="100%" role="img" aria-label="Processor block diagram">
+        <!-- background grid lines -->
+        <defs>
+          <linearGradient id="g1" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="rgba(122,167,255,0.16)"/>
+            <stop offset="1" stop-color="rgba(127,240,193,0.08)"/>
+          </linearGradient>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="rgba(169,182,214,0.75)"></path>
+          </marker>
+        </defs>
+
+        <!-- Boxes -->
+        <!-- Memory -->
+        <rect id="b_memory" class="box" x="45" y="55" rx="16" ry="16" width="220" height="140"
+              fill="rgba(17,31,58,0.55)" stroke="rgba(36,54,95,0.9)" />
+        <text x="155" y="92" text-anchor="middle" fill="#e8eefc" font-weight="800">Main Memory</text>
+        <text x="155" y="120" text-anchor="middle" fill="#a9b6d6" font-size="13">Instructions + Data</text>
+        <text x="155" y="145" text-anchor="middle" fill="#a9b6d6" font-size="12">(slow vs cache)</text>
+
+        <!-- Cache -->
+        <rect id="b_cache" class="box" x="45" y="230" rx="16" ry="16" width="220" height="120"
+              fill="rgba(255,210,122,0.10)" stroke="rgba(255,210,122,0.55)" />
+        <text x="155" y="265" text-anchor="middle" fill="#e8eefc" font-weight="800">Cache Memory</text>
+        <text x="155" y="292" text-anchor="middle" fill="#a9b6d6" font-size="13">Stores recent blocks</text>
+        <text x="155" y="317" text-anchor="middle" fill="#a9b6d6" font-size="12">Hit = fast, Miss = fetch</text>
+
+        <!-- Control Unit -->
+        <rect id="b_cu" class="box" x="340" y="55" rx="16" ry="16" width="280" height="140"
+              fill="url(#g1)" stroke="rgba(122,167,255,0.9)" />
+        <text x="480" y="88" text-anchor="middle" fill="#e8eefc" font-weight="900">Control Unit (CU)</text>
+        <text x="480" y="118" text-anchor="middle" fill="#a9b6d6" font-size="13">Fetch Circuit + Timing</text>
+        <text x="480" y="144" text-anchor="middle" fill="#a9b6d6" font-size="13">Instruction Decoder (TD/ID)</text>
+        <text x="480" y="170" text-anchor="middle" fill="#a9b6d6" font-size="12">Generates control signals</text>
+
+        <!-- Register Bank -->
+        <rect id="b_regs" class="box" x="340" y="230" rx="16" ry="16" width="280" height="240"
+              fill="rgba(17,31,58,0.62)" stroke="rgba(36,54,95,0.9)" />
+        <text x="480" y="262" text-anchor="middle" fill="#e8eefc" font-weight="900">Register Bank</text>
+        <text x="480" y="287" text-anchor="middle" fill="#a9b6d6" font-size="12">PC, IR, ACC, PSW, GPR (R0..R3)</text>
+
+        <!-- ALU -->
+        <rect id="b_alu" class="box" x="690" y="160" rx="16" ry="16" width="330" height="220"
+              fill="rgba(127,240,193,0.10)" stroke="rgba(127,240,193,0.75)" />
+        <text x="855" y="195" text-anchor="middle" fill="#e8eefc" font-weight="900">ALU</text>
+        <text x="855" y="220" text-anchor="middle" fill="#a9b6d6" font-size="13">Op1 + Op2 → Result</text>
+        <text x="855" y="245" text-anchor="middle" fill="#a9b6d6" font-size="12">Updates PSW flags</text>
+        <text x="725" y="285" fill="#a9b6d6" font-size="12">Op1</text>
+        <text x="960" y="285" fill="#a9b6d6" font-size="12">Op2</text>
+
+        <!-- Buses / Arrows -->
+        <!-- Memory <-> Cache -->
+        <line x1="155" y1="195" x2="155" y2="230" stroke="rgba(169,182,214,0.6)" stroke-width="2" marker-end="url(#arrow)" />
+        <line x1="175" y1="230" x2="175" y2="195" stroke="rgba(169,182,214,0.35)" stroke-width="2" marker-end="url(#arrow)" />
+
+        <!-- Cache -> CU (instruction fetch) -->
+        <line x1="265" y1="285" x2="340" y2="130" stroke="rgba(169,182,214,0.6)" stroke-width="2.5" marker-end="url(#arrow)" />
+
+        <!-- CU -> Regs (load IR/PC control) -->
+        <line x1="480" y1="195" x2="480" y2="230" stroke="rgba(169,182,214,0.6)" stroke-width="2.5" marker-end="url(#arrow)" />
+
+        <!-- Regs -> ALU operands -->
+        <line x1="620" y1="320" x2="690" y2="290" stroke="rgba(169,182,214,0.6)" stroke-width="2.5" marker-end="url(#arrow)" />
+        <line x1="620" y1="360" x2="690" y2="290" stroke="rgba(169,182,214,0.35)" stroke-width="2.5" marker-end="url(#arrow)" />
+
+        <!-- ALU -> Regs (writeback) -->
+        <line x1="855" y1="380" x2="620" y2="390" stroke="rgba(127,240,193,0.65)" stroke-width="3" marker-end="url(#arrow)" />
+
+        <!-- Regs -> Cache (data store/load) -->
+        <line x1="340" y1="360" x2="265" y2="300" stroke="rgba(255,210,122,0.60)" stroke-width="2.5" marker-end="url(#arrow)" />
+
+        <!-- Small captions -->
+        <text x="292" y="120" fill="#a9b6d6" font-size="12">Instruction fetch</text>
+        <text x="500" y="220" fill="#a9b6d6" font-size="12">Control signals</text>
+        <text x="705" y="410" fill="#a9b6d6" font-size="12">Writeback</text>
+      </svg>
+
+      <div class="sep"></div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>Definitions (What & Why)</h3>
+          <p>
+            <b>Control Unit (CU)</b>: orchestrates the CPU cycle (fetch/decode/execute). It reads the instruction,
+            decodes it, then sends control signals that move data between registers, ALU, and memory.
+            <br/><br/>
+            <b>Fetching Circuit</b>: uses <b>PC</b> to fetch the next instruction from cache/memory.
+            <br/><br/>
+            <b>Instruction Decoder (TD/ID)</b>: understands the instruction format + instruction set to decide
+            what operation to run (ADD, LOAD, STORE…) and what operands (registers / immediate).
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>Register Bank (Usage)</h3>
+          <p>
+            <b>PC</b>: address of next instruction. <b>IR</b>: current instruction. <b>ACC</b>: accumulator (common in simple CPUs).
+            <b>PSW</b>: flags (Zero, Negative, Carry, Overflow…). <b>GPR</b>: general purpose registers (R0..Rx).
+            Registers are fast storage used to feed the ALU without waiting for memory.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>ALU + Op1/Op2</h3>
+          <p>
+            <b>ALU</b> executes arithmetic/logic (ADD, SUB, AND, OR, CMP…). It takes two inputs:
+            <b>Op1</b> and <b>Op2</b> (from registers or immediate values), produces a result, then updates <b>PSW</b> flags.
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>Cache Memory</h3>
+          <p>
+            <b>Cache</b> is a small fast memory between CPU and main memory. It stores recently used instruction/data blocks.
+            If data exists in cache → <b>Hit</b> (fast). If not → <b>Miss</b> (fetch from main memory, slower).
+          </p>
+        </div>
+      </div>
+
+      <div class="hint">
+        Tip: This demo uses a tiny program: <span class="muted">LOAD R1, [100] → ADD R2, R1, #5 → STORE R2, [104]</span>.
+        You’ll see PC/IR/Registers/Cache updates each step.
+      </div>
+    </div>
+  </section>
+
+  <!-- RIGHT: Simulation values + steps + log -->
+  <aside class="panel">
+    <div class="hd">
+      <div class="title">Step-by-step Simulation</div>
+      <div class="controls">
+        <span class="pill" id="phasePill">Phase: —</span>
+        <button class="secondary" id="btnPrev">Prev</button>
+        <button id="btnNext">Next Step</button>
+        <button class="danger" id="btnReset">Reset</button>
+      </div>
+    </div>
+    <div class="bd">
+      <div class="card">
+        <h3>CPU State (Printed Values)</h3>
+        <div class="kv" id="kvState"></div>
+        <div class="sep"></div>
+        <div class="kv" id="kvRegs"></div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="card">
+        <h3>Cache + Memory (Simplified)</h3>
+        <p class="small muted" id="cacheInfo"></p>
+        <div class="sep"></div>
+        <div class="kv" id="kvMem"></div>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="card">
+        <h3>Execution Log</h3>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<script>
+const CPU = () => ({
+  PC: 0,
+  IR: null,
+  ACC: 0,
+  PSW: { Z:0, N:0, C:0, V:0 },
+  R: [0,0,0,0],
+  op1: null,
+  op2: null,
+  aluOut: null,
+  lastMem: null
+});
+
+const initialMemory = () => ({
+  instr: [
+    { op:"LOAD", rd:1, addr:100 },
+    { op:"ADD",  rd:2, rs:1, imm:5 },
+    { op:"STORE",rs:2, addr:104 },
+    { op:"HALT" }
+  ],
+  data: { 100: 20, 104: 0 }
+});
+
+const Cache = (size=3) => ({
+  size,
+  lines: [],
+  hits: 0,
+  misses: 0,
+  read(key, fetchFn){
+    const idx = this.lines.findIndex(l => l.key === key);
+    if(idx >= 0){
+      this.hits++;
+      return { hit:true, value:this.lines[idx].value };
+    }
+    this.misses++;
+    const value = fetchFn();
+    this.lines.unshift({key, value});
+    this.lines = this.lines.slice(0, this.size);
+    return { hit:false, value };
+  }
+});
+
+function flagUpdate(cpu, result){
+  cpu.PSW.Z = (result === 0) ? 1 : 0;
+  cpu.PSW.N = (result < 0) ? 1 : 0;
+  cpu.PSW.C = 0;
+  cpu.PSW.V = 0;
+}
+function fmtPSW(psw){ return `Z${psw.Z} N${psw.N} C${psw.C} V${psw.V}`; }
+
+const state = {
+  cpu: CPU(),
+  mem: initialMemory(),
+  iCache: Cache(3),
+  dCache: Cache(3),
+  stepIndex: 0,
+  steps: []
+};
+
+function rebuildSteps(){
+  state.steps = [];
+  const maxInstr = state.mem.instr.length;
+  for(let i=0;i<maxInstr;i++){
+    state.steps.push({phase:"FETCH"});
+    state.steps.push({phase:"DECODE"});
+    state.steps.push({phase:"EXECUTE"});
+    state.steps.push({phase:"MEM"});
+    state.steps.push({phase:"WB"});
+  }
+}
+
+const elLog = document.getElementById("log");
+const elState = document.getElementById("kvState");
+const elRegs  = document.getElementById("kvRegs");
+const elMem   = document.getElementById("kvMem");
+const elCacheInfo = document.getElementById("cacheInfo");
+const elPhasePill = document.getElementById("phasePill");
+
+const boxIds = ["b_memory","b_cache","b_cu","b_regs","b_alu"];
+const boxes = Object.fromEntries(boxIds.map(id => [id, document.getElementById(id)]));
+
+function clearHighlights(){
+  Object.values(boxes).forEach(b => {
+    b.classList.remove("active");
+    b.classList.remove("active2");
+    b.classList.remove("hi");
+  });
+}
+function highlight(id, mode=1){
+  const b = boxes[id];
+  if(!b) return;
+  b.classList.add("hi");
+  b.classList.add(mode===1 ? "active" : "active2");
+}
+
+function log(line){
+  elLog.textContent += line + "\\n";
+  elLog.scrollTop = elLog.scrollHeight;
+}
+function kvItem(label, value){
+  const div = document.createElement("div");
+  div.className = "k";
+  div.innerHTML = `<span class="lbl">${label}</span><span class="val">${value}</span>`;
+  return div;
+}
+function render(){
+  const cpu = state.cpu;
+  elPhasePill.textContent = `Phase: ${state.steps[state.stepIndex]?.phase ?? "—"} (Step ${state.stepIndex}/${state.steps.length-1})`;
+
+  elState.innerHTML = "";
+  elState.appendChild(kvItem("PC", cpu.PC));
+  elState.appendChild(kvItem("IR", cpu.IR ? JSON.stringify(cpu.IR) : "—"));
+  elState.appendChild(kvItem("ACC", cpu.ACC));
+  elState.appendChild(kvItem("PSW", fmtPSW(cpu.PSW)));
+  elState.appendChild(kvItem("Op1", cpu.op1 === null ? "—" : cpu.op1));
+  elState.appendChild(kvItem("Op2", cpu.op2 === null ? "—" : cpu.op2));
+  elState.appendChild(kvItem("ALU Out", cpu.aluOut === null ? "—" : cpu.aluOut));
+
+  elRegs.innerHTML = "";
+  ["R0","R1","R2","R3"].forEach((r, i) => elRegs.appendChild(kvItem(r, cpu.R[i])));
+
+  const dc = state.dCache;
+  const ic = state.iCache;
+  elCacheInfo.textContent =
+    `I-Cache: hits=${ic.hits}, misses=${ic.misses} | D-Cache: hits=${dc.hits}, misses=${dc.misses}\\n` +
+    `Cache lines (most recent first): I=[${ic.lines.map(l=>l.key).join(", ") || "—"}], D=[${dc.lines.map(l=>l.key).join(", ") || "—"}]`;
+
+  elMem.innerHTML = "";
+  elMem.appendChild(kvItem("Data[100]", state.mem.data[100]));
+  elMem.appendChild(kvItem("Data[104]", state.mem.data[104]));
+  elMem.appendChild(kvItem("Last Mem Op", cpu.lastMem ? cpu.lastMem : "—"));
+}
+
+function currentInstr(cpu){ return cpu.IR; }
+
+function doPhase(phase){
+  const cpu = state.cpu;
+  clearHighlights();
+
+  if(cpu.IR?.op === "HALT" && phase !== "FETCH"){
+    highlight("b_cu", 1);
+    log(`[${phase}] HALT already reached. No further micro-ops.`);
+    render();
+    return;
+  }
+
+  switch(phase){
+    case "FETCH": {
+      highlight("b_cu", 1);
+      highlight("b_cache", 2);
+
+      const pc = cpu.PC;
+      const res = state.iCache.read(`I@${pc}`, () => state.mem.instr[pc]);
+      cpu.IR = res.value ?? { op:"HALT" };
+      cpu.PC = pc + 1;
+
+      log(`[FETCH] PC=${pc} → Fetch instruction from I-Cache (${res.hit ? "HIT" : "MISS"}), IR=${JSON.stringify(cpu.IR)}; PC becomes ${cpu.PC}`);
+      break;
+    }
+    case "DECODE": {
+      highlight("b_cu", 1);
+      highlight("b_regs", 1);
+
+      const ir = currentInstr(cpu);
+      if(!ir){ log(`[DECODE] No IR loaded yet.`); break; }
+
+      cpu.op1 = null; cpu.op2 = null; cpu.aluOut = null; cpu.lastMem = null;
+
+      let format = "—";
+      if(ir.op === "LOAD") format = "LOAD rd, [addr]";
+      if(ir.op === "STORE") format = "STORE rs, [addr]";
+      if(ir.op === "ADD") format = "ADD rd, rs, #imm";
+      if(ir.op === "HALT") format = "HALT";
+
+      log(`[DECODE] Decoder reads IR.op="${ir.op}" → Instruction format: ${format}. Select needed registers/immediate/address.`);
+      break;
+    }
+    case "EXECUTE": {
+      highlight("b_alu", 1);
+      highlight("b_regs", 1);
+
+      const ir = currentInstr(cpu);
+      if(!ir){ log(`[EXECUTE] No IR.`); break; }
+
+      if(ir.op === "ADD"){
+        cpu.op1 = state.cpu.R[ir.rs];
+        cpu.op2 = ir.imm;
+        cpu.aluOut = cpu.op1 + cpu.op2;
+        log(`[EXECUTE] ALU: Op1=R${ir.rs}(${cpu.op1}) + Op2=#${ir.imm} → ALUOut=${cpu.aluOut}`);
+      } else if(ir.op === "LOAD" || ir.op === "STORE"){
+        cpu.op1 = ir.addr;
+        cpu.aluOut = ir.addr;
+        log(`[EXECUTE] Address calculation: EffectiveAddr=${ir.addr} (simplified)`);
+      } else if(ir.op === "HALT"){
+        highlight("b_cu", 1);
+        log(`[EXECUTE] HALT instruction: CPU stops.`);
+      } else {
+        log(`[EXECUTE] Unknown op "${ir.op}" → treat as NOP.`);
+      }
+      break;
+    }
+    case "MEM": {
+      const ir = currentInstr(cpu);
+      if(!ir){ log(`[MEM] No IR.`); break; }
+
+      if(ir.op === "LOAD"){
+        highlight("b_cache", 2);
+        highlight("b_memory", 2);
+
+        const addr = ir.addr;
+        const res = state.dCache.read(`D@${addr}`, () => state.mem.data[addr] ?? 0);
+        cpu.lastMem = `LOAD from ${addr} (${res.hit ? "HIT" : "MISS"}) = ${res.value}`;
+        cpu.aluOut = res.value;
+        log(`[MEM] Load data: addr=${addr} via D-Cache (${res.hit ? "HIT" : "MISS"}) → value=${res.value}`);
+      } else if(ir.op === "STORE"){
+        highlight("b_cache", 2);
+        highlight("b_memory", 2);
+
+        const addr = ir.addr;
+        const val = state.cpu.R[ir.rs];
+        state.mem.data[addr] = val;
+
+        state.dCache.read(`D@${addr}`, () => val);
+        state.dCache.lines[0].value = val;
+
+        cpu.lastMem = `STORE to ${addr} = ${val}`;
+        log(`[MEM] Store data: MEM[${addr}] = R${ir.rs}(${val}) (write-through). Cache updated.`);
+      } else {
+        highlight("b_cu", 1);
+        log(`[MEM] No memory action for op="${ir.op}".`);
+      }
+      break;
+    }
+    case "WB": {
+      highlight("b_regs", 2);
+
+      const ir = currentInstr(cpu);
+      if(!ir){ log(`[WB] No IR.`); break; }
+
+      if(ir.op === "LOAD"){
+        const val = cpu.aluOut ?? 0;
+        cpu.R[ir.rd] = val;
+        flagUpdate(cpu, val);
+        log(`[WB] Writeback: R${ir.rd} = ${val}. Update PSW → ${fmtPSW(cpu.PSW)}`);
+      } else if(ir.op === "ADD"){
+        const val = cpu.aluOut ?? 0;
+        cpu.R[ir.rd] = val;
+        cpu.ACC = val;
+        flagUpdate(cpu, val);
+        log(`[WB] Writeback: R${ir.rd} = ${val}, ACC=${cpu.ACC}. Update PSW → ${fmtPSW(cpu.PSW)}`);
+      } else if(ir.op === "STORE"){
+        log(`[WB] STORE has no register writeback (memory already updated).`);
+      } else if(ir.op === "HALT"){
+        log(`[WB] HALT confirmed. End of program.`);
+      } else {
+        log(`[WB] No writeback for op="${ir.op}".`);
+      }
+      break;
+    }
+  }
+
+  render();
+}
+
+function resetAll(){
+  state.cpu = CPU();
+  state.mem = initialMemory();
+  state.iCache = Cache(3);
+  state.dCache = Cache(3);
+  state.stepIndex = 0;
+  elLog.textContent = "";
+  clearHighlights();
+  log("=== Reset ===");
+  log("Program:");
+  state.mem.instr.forEach((ins,i)=> log(`  @${i}: ${JSON.stringify(ins)}`));
+  log(`Data: MEM[100]=${state.mem.data[100]}, MEM[104]=${state.mem.data[104]}`);
+  render();
+}
+function next(){
+  if(state.stepIndex >= state.steps.length) return;
+  const phase = state.steps[state.stepIndex].phase;
+  doPhase(phase);
+  state.stepIndex++;
+}
+function prev(){
+  const target = Math.max(0, state.stepIndex - 1);
+  resetAll();
+  for(let i=0;i<target;i++){
+    const phase = state.steps[i].phase;
+    doPhase(phase);
+    state.stepIndex = i+1;
+  }
+}
+
+document.getElementById("btnNext").addEventListener("click", next);
+document.getElementById("btnPrev").addEventListener("click", prev);
+document.getElementById("btnReset").addEventListener("click", resetAll);
+
+rebuildSteps();
+resetAll();
+</script>
+</body>
+</html>
